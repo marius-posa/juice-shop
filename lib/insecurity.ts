@@ -134,8 +134,9 @@ export const redirectAllowlist = new Set([
 
 export const isRedirectAllowed = (url: string) => {
   let allowed = false
+  const urlStr = Array.isArray(url) ? url[0] : String(url)
   for (const allowedUrl of redirectAllowlist) {
-    allowed = allowed || url.includes(allowedUrl) // vuln-code-snippet vuln-line redirectChallenge
+    allowed = allowed || urlStr.includes(allowedUrl) // vuln-code-snippet vuln-line redirectChallenge
   }
   return allowed
 }
