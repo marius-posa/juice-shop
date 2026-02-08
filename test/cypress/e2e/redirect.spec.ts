@@ -16,7 +16,7 @@ describe('/redirect', () => {
           failOnStatusCode: false
         }
       )
-      cy.url().should('match', /https:\/\/owasp\.org/)
+      cy.url().should('match', /^https:\/\/owasp\.org/)
       cy.expectChallengeSolved({ challenge: 'Allowlist Bypass' })
     })
   })
