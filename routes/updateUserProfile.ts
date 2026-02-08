@@ -27,9 +27,19 @@ export function updateUserProfile () {
         return
       }
 
+      const hasSquarefreeOrigin = (headerValue?: string): boolean => {
+        if (!headerValue) return false
+        try {
+          const parsed = new URL(headerValue)
+          return parsed.hostname === 'htmledit.squarefree.com'
+        } catch {
+          return false
+        }
+      }
+
       challengeUtils.solveIf(challenges.csrfChallenge, () => {
-        return ((req.headers.origin?.includes('://htmledit.squarefree.com')) ??
-          (req.headers.referer?.includes('://htmledit.squarefree.com'))) &&
+        return (hasSquarefreeOrigin(req.headers.origin) ||
+          hasSquarefreeOrigin(req.headers.referer)) &&
           req.body.username !== user.username
       })
 
