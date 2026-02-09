@@ -28,21 +28,27 @@ function handleZipFileUpload ({ file }: Request, res: Response, next: NextFuncti
   if (utils.endsWith(file?.originalname.toLowerCase(), '.zip')) {
     if (((file?.buffer) != null) && utils.isChallengeEnabled(challenges.fileWriteChallenge)) {
       const buffer = file.buffer
-      const filename = file.originalname.toLowerCase()
-      const tempFile = path.join(os.tmpdir(), filename)
-      fs.open(tempFile, 'w', function (err, fd) {
+      const sanitizedFilename = path.basename(file.originalname.toLowerCase())
+      const tempFile = path.join(os.tmpdir(), sanitizedFilename)
+      const resolvedTempFile = path.resolve(tempFile)
+      if (!resolvedTempFile.startsWith(path.resolve(os.tmpdir()) + path.sep)) {
+        res.status(403).json({ error: 'Invalid file path' })
+        return
+      }
+      fs.open(resolvedTempFile, 'w', function (err, fd) {
         if (err != null) { next(err) }
         fs.write(fd, buffer, 0, buffer.length, null, function (err) {
           if (err != null) { next(err) }
           fs.close(fd, function () {
-            fs.createReadStream(tempFile)
+            fs.createReadStream(resolvedTempFile)
               .pipe(unzipper.Parse())
               .on('entry', function (entry: any) {
                 const fileName = entry.path
-                const absolutePath = path.resolve('uploads/complaints/' + fileName)
+                const baseDir = path.resolve('uploads/complaints')
+                const absolutePath = path.resolve(baseDir, fileName)
                 challengeUtils.solveIf(challenges.fileWriteChallenge, () => { return absolutePath === path.resolve('ftp/legal.md') })
-                if (absolutePath.includes(path.resolve('.'))) {
-                  entry.pipe(fs.createWriteStream('uploads/complaints/' + fileName).on('error', function (err) { next(err) }))
+                if (absolutePath.startsWith(baseDir + path.sep)) {
+                  entry.pipe(fs.createWriteStream(absolutePath).on('error', function (err) { next(err) }))
                 } else {
                   entry.autodrain()
                 }
