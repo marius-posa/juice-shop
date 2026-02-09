@@ -6,12 +6,47 @@
 import fs from 'node:fs'
 import { Readable } from 'node:stream'
 import { finished } from 'node:stream/promises'
+import dns from 'node:dns/promises'
 import { type Request, type Response, type NextFunction } from 'express'
 
 import * as security from '../lib/insecurity'
 import { UserModel } from '../models/user'
 import * as utils from '../lib/utils'
 import logger from '../lib/logger'
+
+function isPrivateIp (ip: string): boolean {
+  const parts = ip.split('.').map(Number)
+  if (parts.length === 4) {
+    if (parts[0] === 127) return true
+    if (parts[0] === 10) return true
+    if (parts[0] === 172 && parts[1] >= 16 && parts[1] <= 31) return true
+    if (parts[0] === 192 && parts[1] === 168) return true
+    if (parts[0] === 169 && parts[1] === 254) return true
+    if (parts[0] === 0) return true
+    if (ip === '255.255.255.255') return true
+  }
+  if (ip === '::1' || ip === '::' || ip.startsWith('fc') || ip.startsWith('fd') || ip.startsWith('fe80')) return true
+  return false
+}
+
+async function isUrlSafe (targetUrl: string): Promise<boolean> {
+  let parsed: URL
+  try {
+    parsed = new URL(targetUrl)
+  } catch {
+    return false
+  }
+  if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return false
+  const hostname = parsed.hostname.replace(/^\[/, '').replace(/\]$/, '')
+  if (!hostname || hostname === 'localhost') return false
+  try {
+    const { address } = await dns.lookup(hostname)
+    if (isPrivateIp(address)) return false
+  } catch {
+    return false
+  }
+  return true
+}
 
 export function profileImageUrlUpload () {
   return async (req: Request, res: Response, next: NextFunction) => {
@@ -20,6 +55,11 @@ export function profileImageUrlUpload () {
       if (url.match(/(.)*solve\/challenges\/server-side(.)*/) !== null) req.app.locals.abused_ssrf_bug = true
       const loggedInUser = security.authenticatedUsers.get(req.cookies.token)
       if (loggedInUser) {
+        const urlIsSafe = await isUrlSafe(url)
+        if (!urlIsSafe) {
+          res.status(400).json({ error: 'Blocked request to disallowed URL' })
+          return
+        }
         try {
           const response = await fetch(url)
           if (!response.ok || !response.body) {
