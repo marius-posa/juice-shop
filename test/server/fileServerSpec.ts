@@ -69,6 +69,15 @@ describe('fileServer', () => {
     expect(next).to.have.been.calledWith(sinon.match.instanceOf(Error))
   })
 
+  it('should raise error for path traversal with dot-dot sequences in filename', () => {
+    req.params.file = '..%2f..%2fetc%2fpasswd.md'
+
+    servePublicFiles()(req, res, next)
+
+    expect(res.sendFile).to.have.not.been.calledWith(sinon.match.any)
+    expect(next).to.have.been.calledWith(sinon.match.instanceOf(Error))
+  })
+
   it('should solve "directoryListingChallenge" when requesting acquisitions.md', () => {
     challenges.directoryListingChallenge = { solved: false, save } as unknown as Challenge
     req.params.file = 'acquisitions.md'

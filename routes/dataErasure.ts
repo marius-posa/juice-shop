@@ -65,12 +65,19 @@ router.post('/', async (req: Request<Record<string, unknown>, Record<string, unk
     })
 
     res.clearCookie('token')
+    const safeBody = { email: req.body.email, securityAnswer: req.body.securityAnswer }
     if (req.body.layout) {
-      const filePath: string = path.resolve(req.body.layout).toLowerCase()
-      const isForbiddenFile: boolean = (filePath.includes('ftp') || filePath.includes('ctf.key') || filePath.includes('encryptionkeys'))
+      const viewsDir = path.resolve('views')
+      const filePath: string = path.resolve(req.body.layout)
+      if (!filePath.startsWith(viewsDir + path.sep) && filePath !== viewsDir) {
+        next(new Error('File access not allowed'))
+        return
+      }
+      const isForbiddenFile: boolean = (filePath.toLowerCase().includes('ftp') || filePath.toLowerCase().includes('ctf.key') || filePath.toLowerCase().includes('encryptionkeys'))
       if (!isForbiddenFile) {
         res.render('dataErasureResult', {
-          ...req.body
+          ...safeBody,
+          layout: req.body.layout
         }, (error, html) => {
           if (!html || error) {
             next(new Error(error.message))
@@ -85,7 +92,7 @@ router.post('/', async (req: Request<Record<string, unknown>, Record<string, unk
       }
     } else {
       res.render('dataErasureResult', {
-        ...req.body
+        ...safeBody
       })
     }
   } catch (error) {

@@ -10,11 +10,26 @@ export function serveKeyFiles () {
   return ({ params }: Request, res: Response, next: NextFunction) => {
     const file = params.file
 
-    if (!file.includes('/')) {
-      res.sendFile(path.resolve('encryptionkeys/', file))
-    } else {
+    if (file.includes('/') || file.includes('\\')) {
       res.status(403)
       next(new Error('File names cannot contain forward slashes!'))
+      return
     }
+
+    if (file.includes('..') || path.isAbsolute(file)) {
+      res.status(403)
+      next(new Error('File names cannot contain path traversal sequences!'))
+      return
+    }
+
+    const baseDir = path.resolve('encryptionkeys')
+    const resolvedPath = path.resolve(baseDir, file)
+    if (!resolvedPath.startsWith(baseDir + path.sep) && resolvedPath !== baseDir) {
+      res.status(403)
+      next(new Error('File access not allowed!'))
+      return
+    }
+
+    res.sendFile(resolvedPath)
   }
 }
