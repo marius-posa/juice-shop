@@ -22,6 +22,7 @@ import compression from 'compression'
 // @ts-expect-error FIXME due to non-existing type definitions for express-robots-txt
 import robots from 'express-robots-txt'
 import cookieParser from 'cookie-parser'
+import { doubleCsrf } from 'csrf-csrf'
 import * as Prometheus from 'prom-client'
 import swaggerUi from 'swagger-ui-express'
 import featurePolicy from 'feature-policy'
@@ -287,6 +288,44 @@ restoreOverwrittenFilesWithOriginals().then(() => {
 
   app.use(express.static(path.resolve('frontend/dist/frontend')))
   app.use(cookieParser('kekse'))
+
+  /* CSRF Protection */
+  const { invalidCsrfTokenError, generateCsrfToken, doubleCsrfProtection } = doubleCsrf({
+    getSecret: () => 'kekse',
+    getSessionIdentifier: (req) => req.cookies?.['connect.sid'] ?? req.ip ?? '',
+    cookieName: '__csrf',
+    cookieOptions: {
+      sameSite: 'strict' as const,
+      secure: false,
+      httpOnly: false,
+      path: '/'
+    },
+    ignoredMethods: ['GET', 'HEAD', 'OPTIONS'],
+    getCsrfTokenFromRequest: (req) => req.headers['x-csrf-token']
+  })
+
+  app.use((req: Request, res: Response, next: NextFunction) => {
+    if (['GET', 'HEAD', 'OPTIONS'].includes(req.method)) {
+      next()
+      return
+    }
+    const origin = req.headers.origin ?? req.headers.referer
+    if (origin) {
+      try {
+        if (new URL(origin).host !== req.headers.host) {
+          res.status(403).json({ error: 'CSRF validation failed' })
+          return
+        }
+      } catch { /* allow malformed */ }
+    }
+    next()
+  })
+
+  app.use(doubleCsrfProtection)
+
+  app.get('/api/csrf-token', (req: Request, res: Response) => {
+    res.json({ token: generateCsrfToken(req, res) })
+  })
   // vuln-code-snippet end directoryListingChallenge accessLogDisclosureChallenge
 
   /* Configure and enable backend-side i18n */
@@ -665,6 +704,15 @@ restoreOverwrittenFilesWithOriginals().then(() => {
   app.post('/snippets/fixes', checkCorrectFix())
 
   app.use(serveAngularClient())
+
+  /* CSRF Error Handling */
+  app.use((err: any, _req: Request, res: Response, next: NextFunction) => {
+    if (err === invalidCsrfTokenError) {
+      res.status(403).json({ error: 'Invalid CSRF token' })
+      return
+    }
+    next(err)
+  })
 
   /* Error Handling */
   app.use(verify.errorHandlingChallenge())
