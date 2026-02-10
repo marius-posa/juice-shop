@@ -27,10 +27,24 @@ export function servePublicFiles () {
     if (file && (endsWithAllowlistedFileType(file) || (file === 'incident-support.kdbx'))) {
       file = security.cutOffPoisonNullByte(file)
 
+      if (file.includes('..') || path.isAbsolute(file)) {
+        res.status(403)
+        next(new Error('File names cannot contain path traversal sequences!'))
+        return
+      }
+
+      const baseDir = path.resolve('ftp')
+      const resolvedPath = path.resolve(baseDir, file)
+      if (!resolvedPath.startsWith(baseDir + path.sep) && resolvedPath !== baseDir) {
+        res.status(403)
+        next(new Error('File access not allowed!'))
+        return
+      }
+
       challengeUtils.solveIf(challenges.directoryListingChallenge, () => { return file.toLowerCase() === 'acquisitions.md' })
       verifySuccessfulPoisonNullByteExploit(file)
 
-      res.sendFile(path.resolve('ftp/', file))
+      res.sendFile(resolvedPath)
     } else {
       res.status(403)
       next(new Error('Only .md and .pdf files are allowed!'))
