@@ -69,7 +69,7 @@ describe('fileServer', () => {
     expect(next).to.have.been.calledWith(sinon.match.instanceOf(Error))
   })
 
-  it('should solve "directoryListingChallenge"when requesting acquisitions.md', () => {
+  it('should solve "directoryListingChallenge" when requesting acquisitions.md', () => {
     challenges.directoryListingChallenge = { solved: false, save } as unknown as Challenge
     req.params.file = 'acquisitions.md'
 
