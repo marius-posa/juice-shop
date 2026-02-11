@@ -37,4 +37,13 @@ describe('keyServer', () => {
     expect(res.sendFile).to.have.not.been.calledWith(sinon.match.any)
     expect(next).to.have.been.calledWith(sinon.match.instanceOf(Error))
   })
+
+  it('should block path traversal when resolved path escapes encryptionkeys base directory', () => {
+    req.params.file = '..'
+
+    serveKeyFiles()(req, res, next)
+
+    expect(res.sendFile).to.have.not.been.calledWith(sinon.match.any)
+    expect(next).to.have.been.calledWith(sinon.match.instanceOf(Error))
+  })
 })
