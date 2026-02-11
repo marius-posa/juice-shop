@@ -7,11 +7,70 @@ import fs from 'node:fs'
 import { Readable } from 'node:stream'
 import { finished } from 'node:stream/promises'
 import { type Request, type Response, type NextFunction } from 'express'
+import { URL } from 'node:url'
+import dns from 'node:dns/promises'
+import net from 'node:net'
 
 import * as security from '../lib/insecurity'
 import { UserModel } from '../models/user'
 import * as utils from '../lib/utils'
 import logger from '../lib/logger'
+
+function isPrivateIp (ip: string): boolean {
+  if (net.isIPv4(ip)) {
+    const parts = ip.split('.').map(Number)
+    if (parts[0] === 127) return true
+    if (parts[0] === 10) return true
+    if (parts[0] === 172 && parts[1] >= 16 && parts[1] <= 31) return true
+    if (parts[0] === 192 && parts[1] === 168) return true
+    if (parts[0] === 169 && parts[1] === 254) return true
+    if (parts[0] === 0) return true
+  }
+  if (net.isIPv6(ip)) {
+    const normalized = ip.toLowerCase()
+    if (normalized === '::1' || normalized === '::' || normalized.startsWith('fc') || normalized.startsWith('fd') || normalized.startsWith('fe80')) return true
+    if (normalized.startsWith('::ffff:')) {
+      const ipv4 = normalized.slice(7)
+      if (net.isIPv4(ipv4)) return isPrivateIp(ipv4)
+    }
+  }
+  return false
+}
+
+const ALLOWED_PROTOCOLS = ['http:', 'https:']
+
+async function validateUrl (urlString: string): Promise<void> {
+  let parsed: URL
+  try {
+    parsed = new URL(urlString)
+  } catch {
+    throw new Error('Invalid URL format')
+  }
+
+  if (!ALLOWED_PROTOCOLS.includes(parsed.protocol)) {
+    throw new Error('Only HTTP and HTTPS protocols are allowed')
+  }
+
+  const hostname = parsed.hostname
+
+  if (net.isIP(hostname)) {
+    if (isPrivateIp(hostname)) {
+      throw new Error('Requests to private/internal IP addresses are not allowed')
+    }
+  } else {
+    const addresses = await dns.resolve4(hostname).catch(() => [] as string[])
+    const addresses6 = await dns.resolve6(hostname).catch(() => [] as string[])
+    const allAddresses = [...addresses, ...addresses6]
+    if (allAddresses.length === 0) {
+      throw new Error('Unable to resolve hostname')
+    }
+    for (const addr of allAddresses) {
+      if (isPrivateIp(addr)) {
+        throw new Error('Requests to private/internal IP addresses are not allowed')
+      }
+    }
+  }
+}
 
 export function profileImageUrlUpload () {
   return async (req: Request, res: Response, next: NextFunction) => {
@@ -21,6 +80,7 @@ export function profileImageUrlUpload () {
       const loggedInUser = security.authenticatedUsers.get(req.cookies.token)
       if (loggedInUser) {
         try {
+          await validateUrl(url)
           const response = await fetch(url)
           if (!response.ok || !response.body) {
             throw new Error('url returned a non-OK status code or an empty body')
