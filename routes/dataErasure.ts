@@ -65,12 +65,18 @@ router.post('/', async (req: Request<Record<string, unknown>, Record<string, unk
     })
 
     res.clearCookie('token')
+    const safeBody: Record<string, unknown> = {
+      email: req.body.email,
+      securityAnswer: req.body.securityAnswer
+    }
     if (req.body.layout) {
       const filePath: string = path.resolve(req.body.layout).toLowerCase()
+      const viewsDir: string = path.resolve('views')
       const isForbiddenFile: boolean = (filePath.includes('ftp') || filePath.includes('ctf.key') || filePath.includes('encryptionkeys'))
-      if (!isForbiddenFile) {
+      if (!isForbiddenFile && filePath.startsWith(viewsDir.toLowerCase() + path.sep)) {
         res.render('dataErasureResult', {
-          ...req.body
+          ...safeBody,
+          layout: req.body.layout
         }, (error, html) => {
           if (!html || error) {
             next(new Error(error.message))
@@ -85,7 +91,7 @@ router.post('/', async (req: Request<Record<string, unknown>, Record<string, unk
       }
     } else {
       res.render('dataErasureResult', {
-        ...req.body
+        ...safeBody
       })
     }
   } catch (error) {
