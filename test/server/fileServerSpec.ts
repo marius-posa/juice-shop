@@ -118,4 +118,12 @@ describe('fileServer', () => {
     expect(res.sendFile).to.have.been.calledWith(sinon.match(/ftp[/\\]suspicious_errors\.yml/))
     expect(challenges.misplacedSignatureFileChallenge.solved).to.equal(true)
   })
+
+  it('should block path traversal via ..%2f sequences in filename', () => {
+    req.params.file = '..%2f..%2fetc%2fpasswd.md'
+
+    servePublicFiles()(req, res, next)
+
+    expect(res.sendFile).to.have.not.been.calledWith(sinon.match.any)
+  })
 })

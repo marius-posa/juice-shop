@@ -37,4 +37,12 @@ describe('keyServer', () => {
     expect(res.sendFile).to.have.not.been.calledWith(sinon.match.any)
     expect(next).to.have.been.calledWith(sinon.match.instanceOf(Error))
   })
+
+  it('should block path traversal via dot-dot sequences without slashes', () => {
+    req.params.file = '..%5c..%5cetc%5cpasswd'
+
+    serveKeyFiles()(req, res, next)
+
+    expect(res.sendFile).to.have.not.been.calledWith(sinon.match.any)
+  })
 })
