@@ -69,24 +69,22 @@ router.post('/', async (req: Request<Record<string, unknown>, Record<string, unk
       const filePath: string = path.resolve(req.body.layout).toLowerCase()
       const isForbiddenFile: boolean = (filePath.includes('ftp') || filePath.includes('ctf.key') || filePath.includes('encryptionkeys'))
       if (!isForbiddenFile) {
-        res.render('dataErasureResult', {
-          ...req.body
-        }, (error, html) => {
-          if (!html || error) {
-            next(new Error(error.message))
-          } else {
-            const sendlfrResponse: string = html.slice(0, 100) + '......'
-            res.send(sendlfrResponse)
-            challengeUtils.solveIf(challenges.lfrChallenge, () => { return true })
-          }
-        })
+          const safeBody = { email: req.body.email, securityAnswer: req.body.securityAnswer, layout: req.body.layout }
+          res.render('dataErasureResult', safeBody, (error, html) => {
+            if (!html || error) {
+              next(new Error(error.message))
+            } else {
+              const sendlfrResponse: string = html.slice(0, 100) + '......'
+              res.send(sendlfrResponse)
+              challengeUtils.solveIf(challenges.lfrChallenge, () => { return true })
+            }
+          })
       } else {
         next(new Error('File access not allowed'))
       }
     } else {
-      res.render('dataErasureResult', {
-        ...req.body
-      })
+      const safeRenderBody = { email: req.body.email, securityAnswer: req.body.securityAnswer }
+      res.render('dataErasureResult', safeRenderBody)
     }
   } catch (error) {
     next(error)
