@@ -9,7 +9,7 @@ import * as challengeUtils from '../lib/challengeUtils'
 import { reviewsCollection } from '../data/mongodb'
 import { challenges } from '../data/datacache'
 import * as security from '../lib/insecurity'
-import * as utils from '../lib/utils'
+
 
 export function createProductReviews () {
   return async (req: Request, res: Response) => {
@@ -29,7 +29,7 @@ export function createProductReviews () {
       })
       return res.status(201).json({ status: 'success' })
     } catch (err: unknown) {
-      return res.status(500).json(utils.getErrorMessage(err))
+      return res.status(500).json({ error: 'Internal server error' })
     }
   }
 }

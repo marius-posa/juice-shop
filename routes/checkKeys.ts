@@ -1,7 +1,7 @@
 import { type Request, type Response } from 'express'
 import { HDNodeWallet } from 'ethers'
 import * as challengeUtils from '../lib/challengeUtils'
-import * as utils from '../lib/utils'
+
 import { challenges } from '../data/datacache'
 
 export function checkKeys () {
@@ -27,7 +27,7 @@ export function checkKeys () {
         }
       }
     } catch (error) {
-      res.status(500).json(utils.getErrorMessage(error))
+      res.status(500).json({ error: 'Internal server error' })
     }
   }
 }
@@ -36,7 +36,7 @@ export function nftUnlocked () {
     try {
       res.status(200).json({ status: challenges.nftUnlockChallenge.solved })
     } catch (error) {
-      res.status(500).json(utils.getErrorMessage(error))
+      res.status(500).json({ error: 'Internal server error' })
     }
   }
 }
