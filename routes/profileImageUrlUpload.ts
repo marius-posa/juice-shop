@@ -7,11 +7,48 @@ import fs from 'node:fs'
 import { Readable } from 'node:stream'
 import { finished } from 'node:stream/promises'
 import { type Request, type Response, type NextFunction } from 'express'
+import { lookup } from 'node:dns/promises'
+import { URL } from 'node:url'
 
 import * as security from '../lib/insecurity'
 import { UserModel } from '../models/user'
 import * as utils from '../lib/utils'
 import logger from '../lib/logger'
+
+function isPrivateIp (ip: string): boolean {
+  const parts = ip.split('.').map(Number)
+  if (parts.length === 4 && parts.every(p => p >= 0 && p <= 255)) {
+    if (parts[0] === 127) return true
+    if (parts[0] === 10) return true
+    if (parts[0] === 172 && parts[1] >= 16 && parts[1] <= 31) return true
+    if (parts[0] === 192 && parts[1] === 168) return true
+    if (parts[0] === 169 && parts[1] === 254) return true
+    if (parts[0] === 0) return true
+    if (parts.every(p => p === 255)) return true
+  }
+  if (ip === '::1' || ip === '::' || ip.startsWith('fc') || ip.startsWith('fd') || ip.startsWith('fe80')) return true
+  return false
+}
+
+async function isUrlSafe (urlString: string): Promise<boolean> {
+  let parsed: URL
+  try {
+    parsed = new URL(urlString)
+  } catch {
+    return false
+  }
+  if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return false
+  const hostname = parsed.hostname
+  if (hostname === 'localhost' || hostname === '') return false
+  if (isPrivateIp(hostname)) return false
+  try {
+    const { address } = await lookup(hostname)
+    if (isPrivateIp(address)) return false
+  } catch {
+    return false
+  }
+  return true
+}
 
 export function profileImageUrlUpload () {
   return async (req: Request, res: Response, next: NextFunction) => {
@@ -21,6 +58,9 @@ export function profileImageUrlUpload () {
       const loggedInUser = security.authenticatedUsers.get(req.cookies.token)
       if (loggedInUser) {
         try {
+          if (!await isUrlSafe(url)) {
+            throw new Error('Blocked request to unsafe or internal URL')
+          }
           const response = await fetch(url)
           if (!response.ok || !response.body) {
             throw new Error('url returned a non-OK status code or an empty body')
