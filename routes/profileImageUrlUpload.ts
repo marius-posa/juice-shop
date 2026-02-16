@@ -7,11 +7,61 @@ import fs from 'node:fs'
 import { Readable } from 'node:stream'
 import { finished } from 'node:stream/promises'
 import { type Request, type Response, type NextFunction } from 'express'
+import { lookup } from 'node:dns/promises'
+import net from 'node:net'
 
 import * as security from '../lib/insecurity'
 import { UserModel } from '../models/user'
 import * as utils from '../lib/utils'
 import logger from '../lib/logger'
+
+function isPrivateIp (ip: string): boolean {
+  if (net.isIPv4(ip)) {
+    const parts = ip.split('.').map(Number)
+    if (parts[0] === 127) return true
+    if (parts[0] === 10) return true
+    if (parts[0] === 172 && parts[1] >= 16 && parts[1] <= 31) return true
+    if (parts[0] === 192 && parts[1] === 168) return true
+    if (parts[0] === 169 && parts[1] === 254) return true
+    if (parts[0] === 0) return true
+  }
+  if (net.isIPv6(ip)) {
+    const normalized = ip.toLowerCase()
+    if (normalized === '::1') return true
+    if (normalized.startsWith('fc') || normalized.startsWith('fd')) return true
+    if (normalized.startsWith('fe80')) return true
+    if (normalized === '::') return true
+  }
+  return false
+}
+
+async function isSafeUrl (urlString: string): Promise<boolean> {
+  let parsed: URL
+  try {
+    parsed = new URL(urlString)
+  } catch {
+    return false
+  }
+  if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+    return false
+  }
+  const hostname = parsed.hostname
+  if (net.isIP(hostname)) {
+    return !isPrivateIp(hostname)
+  }
+  try {
+    const result = await lookup(hostname, { all: true })
+    const addresses = Array.isArray(result) ? result : [result]
+    for (const entry of addresses) {
+      if (isPrivateIp(entry.address)) {
+        return false
+      }
+    }
+    return true
+  } catch {
+    return false
+  }
+}
 
 export function profileImageUrlUpload () {
   return async (req: Request, res: Response, next: NextFunction) => {
@@ -20,6 +70,11 @@ export function profileImageUrlUpload () {
       if (url.match(/(.)*solve\/challenges\/server-side(.)*/) !== null) req.app.locals.abused_ssrf_bug = true
       const loggedInUser = security.authenticatedUsers.get(req.cookies.token)
       if (loggedInUser) {
+        const urlIsSafe = await isSafeUrl(url)
+        if (!urlIsSafe) {
+          res.status(400).json({ error: 'Blocked request to unauthorized URL' })
+          return
+        }
         try {
           const response = await fetch(url)
           if (!response.ok || !response.body) {
