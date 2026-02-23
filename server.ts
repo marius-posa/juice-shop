@@ -22,6 +22,7 @@ import compression from 'compression'
 // @ts-expect-error FIXME due to non-existing type definitions for express-robots-txt
 import robots from 'express-robots-txt'
 import cookieParser from 'cookie-parser'
+import csrf from 'csurf'
 import * as Prometheus from 'prom-client'
 import swaggerUi from 'swagger-ui-express'
 import featurePolicy from 'feature-policy'
@@ -287,6 +288,23 @@ restoreOverwrittenFilesWithOriginals().then(() => {
 
   app.use(express.static(path.resolve('frontend/dist/frontend')))
   app.use(cookieParser('kekse'))
+
+  /* CSRF protection middleware */
+  const csrfProtection = csrf({ cookie: { key: '_csrf', signed: true, sameSite: 'strict', httpOnly: true } })
+  app.use((req: Request, res: Response, next: NextFunction) => {
+    // Skip CSRF validation for API and REST endpoints that rely on JWT-based authentication
+    if (req.path.startsWith('/api/') || req.path.startsWith('/rest/') || req.path.startsWith('/b2b/') || req.path.startsWith('/file-upload') || req.path.startsWith('/profile/image')) {
+      return next()
+    }
+    csrfProtection(req, res, next)
+  })
+  app.use((err: any, req: Request, res: Response, next: NextFunction) => {
+    if (err.code === 'EBADCSRFTOKEN') {
+      res.status(403).json({ error: 'Invalid CSRF token' })
+    } else {
+      next(err)
+    }
+  })
   // vuln-code-snippet end directoryListingChallenge accessLogDisclosureChallenge
 
   /* Configure and enable backend-side i18n */
