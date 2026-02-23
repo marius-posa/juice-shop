@@ -53,7 +53,7 @@ export function likeProductReviews () {
         )
         res.json(result)
       } catch (err) {
-        res.status(500).json(err)
+        res.status(500).json({ error: 'Internal error' })
       }
     } catch (err) {
       res.status(400).json({ error: 'Wrong Params' })
