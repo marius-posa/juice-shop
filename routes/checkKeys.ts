@@ -27,7 +27,7 @@ export function checkKeys () {
         }
       }
     } catch (error) {
-      res.status(500).json(utils.getErrorMessage(error))
+      res.status(500).json({ error: 'Internal error' })
     }
   }
 }
@@ -36,7 +36,7 @@ export function nftUnlocked () {
     try {
       res.status(200).json({ status: challenges.nftUnlockChallenge.solved })
     } catch (error) {
-      res.status(500).json(utils.getErrorMessage(error))
+      res.status(500).json({ error: 'Internal error' })
     }
   }
 }
