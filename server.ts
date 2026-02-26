@@ -22,6 +22,7 @@ import compression from 'compression'
 // @ts-expect-error FIXME due to non-existing type definitions for express-robots-txt
 import robots from 'express-robots-txt'
 import cookieParser from 'cookie-parser'
+import { doubleCsrf } from 'csrf-csrf'
 import * as Prometheus from 'prom-client'
 import swaggerUi from 'swagger-ui-express'
 import featurePolicy from 'feature-policy'
@@ -288,6 +289,64 @@ restoreOverwrittenFilesWithOriginals().then(() => {
   app.use(express.static(path.resolve('frontend/dist/frontend')))
   app.use(cookieParser('kekse'))
   // vuln-code-snippet end directoryListingChallenge accessLogDisclosureChallenge
+
+  /* CSRF Protection */
+  const { doubleCsrfProtection, generateCsrfToken } = doubleCsrf({
+    getSecret: () => process.env.CSRF_SECRET ?? 'csrf-secret-default',
+    getSessionIdentifier: (req: Request) => req.cookies?.['connect.sid'] as string ?? '',
+    cookieName: '__Host-psifi.x-csrf-token',
+    cookieOptions: {
+      sameSite: 'strict',
+      path: '/',
+      secure: true,
+      httpOnly: true
+    },
+    getCsrfTokenFromRequest: (req: Request) => {
+      const headerToken = req.headers['x-csrf-token']
+      const token = Array.isArray(headerToken) ? headerToken[0] : headerToken
+      return token ?? req.body?._csrf
+    }
+  })
+
+  /* Origin/Referer validation as defense-in-depth against CSRF */
+  app.use((req: Request, res: Response, next: NextFunction) => {
+    const safeMethods = ['GET', 'HEAD', 'OPTIONS']
+    if (safeMethods.includes(req.method)) {
+      next()
+      return
+    }
+    const origin = req.headers.origin ?? req.headers.referer
+    if (origin) {
+      try {
+        const originUrl = new URL(origin)
+        const hostHeader = req.headers.host ?? ''
+        const expectedHost = hostHeader.split(':')[0]
+        if (originUrl.hostname !== expectedHost && originUrl.hostname !== 'localhost' && originUrl.hostname !== '127.0.0.1') {
+          res.status(403).json({ error: 'CSRF origin validation failed' })
+          return
+        }
+      } catch {
+        // If origin header is malformed, continue to CSRF token validation
+      }
+    }
+    next()
+  })
+
+  /* CSRF token endpoint for frontend */
+  app.get('/api/csrf-token', (req: Request, res: Response) => {
+    const token = generateCsrfToken(req, res)
+    res.json({ token })
+  })
+
+  /* Apply CSRF token validation to state-changing requests */
+  app.use((req: Request, res: Response, next: NextFunction) => {
+    const safeMethods = ['GET', 'HEAD', 'OPTIONS']
+    if (safeMethods.includes(req.method)) {
+      next()
+      return
+    }
+    doubleCsrfProtection(req, res, next)
+  })
 
   /* Configure and enable backend-side i18n */
   i18n.configure({
